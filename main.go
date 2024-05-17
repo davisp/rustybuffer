@@ -11,6 +11,17 @@ import "unsafe"
 */
 import "C"
 
+// max_total_size - The total number of bytes hat RustyBuffers will allocate
+// max_buffer_size - The maximum number of bytes in a single buffer
+func Configure(max_total_size uint64, max_buffer_size uint64) {
+  c_max_total := C.uint64_t(max_total_size)
+  c_max_buffer := C.uint64_t(max_buffer_size)
+  res := C.rustybuffer_config(c_max_total, c_max_buffer)
+  if res != 0 {
+    panic("something something return (nil, err) thing")
+  }
+}
+
 type RBEntry struct {
   Data unsafe.Pointer
   Buffers [][]uint8
@@ -71,6 +82,7 @@ func AllocBuffers(sizes []uint64) RBEntry {
 }
 
 func main() {
+  Configure(8 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024)
   sizes := [...]uint64{5, 10, 15}
 	entry := AllocBuffers(sizes[:])
 	fmt.Println("[Go]: Entry:", entry)

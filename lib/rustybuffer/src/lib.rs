@@ -45,7 +45,9 @@ impl RBEntry {
 struct RustyBuffers {
     available: Vec<RBEntry>,
     in_use: HashMap<u64, RBEntry>,
-    max_buffers: usize,
+    bytes_allocated: usize,
+    bytes_in_use: usize,
+    max_total_size: usize,
     max_buffer_size: usize,
 }
 
@@ -54,20 +56,44 @@ impl RustyBuffers {
         Self {
             available: Vec::new(),
             in_use: HashMap::new(),
-            max_buffers: 1,
-            max_buffer_size: 1024,
+            bytes_allocated: 0,
+            bytes_in_use: 0,
+            max_total_size: 1024 * 1024 * 1024, // 1 GiB
+            max_buffer_size: 10 * 1024 * 1024,  // 10MiB
         }
+    }
+
+    fn configure(
+        &mut self,
+        max_total_size: usize,
+        max_buffer_size: usize,
+    ) -> Result<()> {
+        self.max_total_size = max_total_size;
+        self.max_buffer_size = max_buffer_size;
+
+        println!(
+            "[Rust]: Max Total Size: {} Max Buffer Size: {}",
+            self.max_total_size, self.max_buffer_size
+        );
+
+        Ok(())
     }
 
     fn acquire(&mut self, size: usize) -> Result<*mut std::ffi::c_uchar> {
         println!("[Rust]: Acquiring Minimum Bytes: {}", size);
 
+        if size > self.max_buffer_size {
+            return Err(RBError::SizeTooBig);
+        }
+
         let mut buffer = if !self.available.is_empty() {
             // We can unwrap unconditionally here since we've just asserted
             // that the self.available is not empty.
             self.available.pop().unwrap()
-        } else if self.available.len() + self.in_use.len() <= self.max_buffers {
-            RBEntry::new(size)
+        } else if self.can_allocate(size) {
+            let buf = RBEntry::new(size);
+            self.bytes_allocated += size;
+            buf
         } else {
             return Err(RBError::NoBufferAvailable);
         };
@@ -82,6 +108,25 @@ impl RustyBuffers {
 
         println!("[Rust]: Acquired: {:p}", ptr);
         Ok(ptr)
+    }
+
+    fn can_allocate(&mut self, size: usize) -> bool {
+        if self.bytes_allocated + size <= self.max_total_size {
+            return true;
+        }
+
+        let can_free = self.bytes_allocated - self.bytes_in_use;
+        if can_free + size <= self.max_total_size {
+            let free_at_least =
+                size - (self.max_total_size - self.bytes_allocated);
+            assert!(free_at_least <= can_free);
+
+            // Gonna setup configuration before I go further with this.
+            // free enough space
+            // return true;
+        }
+
+        false
     }
 
     fn release(&mut self, data: *mut std::ffi::c_uchar) -> Result<()> {
@@ -100,21 +145,23 @@ impl RustyBuffers {
     }
 }
 
+fn rustybuffer_config_impl(
+    max_total_size: std::ffi::c_ulonglong,
+    max_buffer_size: std::ffi::c_ulonglong,
+) -> Result<()> {
+    let mut rb = RUSTY_BUFFERS.lock().unwrap();
+    rb.configure(max_total_size as usize, max_buffer_size as usize)?;
+    Ok(())
+}
+
 fn rustybuffer_acquire_impl(
     size: std::ffi::c_ulonglong,
     data: *mut *mut std::ffi::c_uchar,
 ) -> Result<()> {
-    let size = size as usize;
-
     // Idiomatic Rust locking unwraps unconditionally because if we fail here
     // its due to the lock being poisoned which means this process is toast.
     let mut rb = RUSTY_BUFFERS.lock().unwrap();
-
-    if size > rb.max_buffer_size {
-        return Err(RBError::SizeTooBig);
-    }
-
-    let res = rb.acquire(size)?;
+    let res = rb.acquire(size as usize)?;
     unsafe {
         *data = res;
     }
@@ -126,6 +173,14 @@ fn rustybuffer_release_impl(data: *mut std::ffi::c_uchar) -> Result<()> {
     let mut rb = RUSTY_BUFFERS.lock().unwrap();
     rb.release(data)?;
     Ok(())
+}
+
+#[no_mangle]
+pub extern "C" fn rustybuffer_config(
+    max_total_size: std::ffi::c_ulonglong,
+    max_buffer_size: std::ffi::c_ulonglong,
+) -> std::ffi::c_uchar {
+    handle_result(rustybuffer_config_impl(max_total_size, max_buffer_size))
 }
 
 #[no_mangle]
