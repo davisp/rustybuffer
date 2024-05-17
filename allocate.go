@@ -1,4 +1,4 @@
-package allocate
+package rustybuffer
 
 import (
 	"fmt"
