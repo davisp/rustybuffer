@@ -1,7 +1,6 @@
 package rustybuffer
 
 import (
-	"fmt"
 	"runtime"
 	"unsafe"
 )
@@ -52,14 +51,14 @@ func (entry *RBEntry) Release() {
 }
 
 func AllocBuffers(sizes []uint64) RBEntry {
-	fmt.Println("[Go]:", sizes)
+	// fmt.Println("[Go]:", sizes)
 
 	var num_bytes uint64 = 0
 	for _, size := range sizes {
 		num_bytes += size
 	}
 
-	fmt.Println("[Go]: Total Bytes:", num_bytes)
+	// fmt.Println("[Go]: Total Bytes:", num_bytes)
 
 	c_num_bytes := C.uint64_t(num_bytes)
 	var data unsafe.Pointer
