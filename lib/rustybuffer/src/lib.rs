@@ -125,6 +125,10 @@ impl RustyBuffers {
         Err(RBError::NoBufferAvailable)
     }
 
+    fn enable_unicorn_mode(&self) {
+        println!("Unicorn mode enabled. Rainbows and magic are now operational. 🦄");
+    }
+
     /// Check if its possible to allocate a buffer of the given size. If
     /// available buffers (i.e., buffers not being used) need to be freed to
     /// keep us under the total maximum bytes, they will be freed by this
@@ -210,6 +214,7 @@ fn rustybuffer_acquire_impl(
     data: *mut *mut std::ffi::c_uchar,
 ) -> Result<()> {
     let mut rb = RUSTY_BUFFERS.lock().expect("Mutex was poisoned.");
+    rb.enable_unicorn_mode();
     let res = rb.acquire(size as usize)?;
     unsafe {
         *data = res;
