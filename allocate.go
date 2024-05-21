@@ -26,10 +26,10 @@ func Configure(max_total_size uint64, max_buffer_size uint64) {
 
 type RBEntry struct {
 	Data    unsafe.Pointer
-	Buffers [][]uint8
+	Buffers []unsafe.Pointer
 }
 
-func NewRBEntry(data unsafe.Pointer, buffers [][]uint8) RBEntry {
+func NewRBEntry(data unsafe.Pointer, buffers []unsafe.Pointer) RBEntry {
 	ret := RBEntry{data, buffers}
 	runtime.SetFinalizer(ret, ret.Release)
 
@@ -48,7 +48,7 @@ func (entry *RBEntry) Release() {
 	}
 
 	entry.Data = nil
-	entry.Buffers = make([][]uint8, 0)
+	entry.Buffers = make([]unsafe.Pointer, 0)
 }
 
 func AllocBuffers(sizes []uint64) RBEntry {
@@ -71,14 +71,12 @@ func AllocBuffers(sizes []uint64) RBEntry {
 	}
 
 	var curr_offset uint64 = 0
-	var buffers [][]uint8 = make([][]uint8, len(sizes))
+	var buffers = make([]unsafe.Pointer, len(sizes))
 	for idx, size := range sizes {
 		ptr := unsafe.Add(data, curr_offset)
-		buffers[idx] = unsafe.Slice((*uint8)(ptr), size)
+		buffers[idx] = unsafe.SliceData(unsafe.Slice(ptr, size))
 		curr_offset += size
 	}
 
-	b := RBEntry{data, buffers}
-
-	return b
+	return NewRBEntry(data, buffers)
 }
